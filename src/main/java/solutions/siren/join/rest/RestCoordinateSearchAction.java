@@ -40,7 +40,7 @@ import static org.elasticsearch.rest.RestRequest.Method.POST;
 
 public class RestCoordinateSearchAction extends BaseRestHandler {
 
-  private SearchRequestParsers searchRequestParsers;
+  private final SearchRequestParsers searchRequestParsers;
 
   @Inject
   public RestCoordinateSearchAction(final Settings settings, final RestController controller, final SearchRequestParsers searchRequestParsers) {
@@ -73,8 +73,10 @@ public class RestCoordinateSearchAction extends BaseRestHandler {
   @Override
   protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
     SearchRequest searchRequest = new SearchRequest();
-    BytesReference content = request.content().length() > 0 ? request.content() : XContentFactory.jsonBuilder().startObject().endObject().bytes();
-    RestSearchAction.parseSearchRequest(searchRequest, request, searchRequestParsers ,parseFieldMatcher, content);
+    request.withContentOrSourceParamParserOrNull(parser ->
+      RestSearchAction.parseSearchRequest(searchRequest, request, searchRequestParsers, parseFieldMatcher, parser)
+		);
+
     return channel -> client.execute(CoordinateSearchAction.INSTANCE, searchRequest, new RestStatusToXContentListener<>(channel));
   }
 

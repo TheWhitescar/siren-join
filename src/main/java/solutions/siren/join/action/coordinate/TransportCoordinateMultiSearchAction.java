@@ -31,6 +31,7 @@ import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.concurrent.AtomicArray;
+import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.search.SearchRequestParsers;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -67,9 +68,10 @@ public class TransportCoordinateMultiSearchAction extends BaseTransportCoordinat
                                               FilterJoinCacheService cacheService,
                                               TransportSearchAction search, ActionFilters actionFilters,
                                               SearchRequestParsers searchRequestParsers,
-                                              IndexNameExpressionResolver indexNameExpressionResolver, Client client) {
+                                              IndexNameExpressionResolver indexNameExpressionResolver, Client client,
+                                              NamedXContentRegistry xContentRegistry) {
     super(settings, CoordinateMultiSearchAction.NAME, threadPool, transportService, actionFilters,
-            indexNameExpressionResolver, searchRequestParsers, client,  MultiSearchRequest::new);
+            indexNameExpressionResolver, searchRequestParsers, client,  xContentRegistry, MultiSearchRequest::new);
     this.searchAction = search;
     this.clusterService = clusterService;
     this.cacheService = cacheService;

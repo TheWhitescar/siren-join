@@ -56,17 +56,19 @@ extends TransportAction<Request, Response> {
 
   protected final Client client;
   private final SearchRequestParsers searchRequestParsers;
+  private final NamedXContentRegistry xContentRegistry;
 
   protected BaseTransportCoordinateSearchAction(final Settings settings, final String actionName,
                                                 final ThreadPool threadPool, final TransportService transportService,
                                                 final ActionFilters actionFilters, final IndexNameExpressionResolver indexNameExpressionResolver,
                                                 final SearchRequestParsers searchRequestParsers,
-                                                final Client client, Supplier<Request> request) {
+                                                final Client client, NamedXContentRegistry xContentRegistry, Supplier<Request> request) {
     super(settings, actionName, threadPool, actionFilters, indexNameExpressionResolver, transportService.getTaskManager());
     // Use the generic threadpool, as we can end up with deadlock with the SEARCH threadpool
     transportService.registerRequestHandler(actionName, request, ThreadPool.Names.GENERIC, new TransportHandler());
     this.client = client;
-    this.searchRequestParsers= searchRequestParsers;
+    this.searchRequestParsers = searchRequestParsers;
+    this.xContentRegistry = xContentRegistry;
   }
 
   protected Tuple<XContentType, Map<String, Object>> parseSource(BytesReference source) {
@@ -94,7 +96,7 @@ extends TransportAction<Request, Response> {
     try {
       // Enforce the content type to be CBOR as it is more efficient for large byte arrays
       try (XContentBuilder builder = XContentFactory.cborBuilder().map(map)) {
-        QueryParseContext context = new QueryParseContext(searchRequestParsers.queryParsers, XContentHelper.createParser(builder.bytes()), parseFieldMatcher);
+        QueryParseContext context = new QueryParseContext(XContentHelper.createParser(xContentRegistry, builder.bytes()), parseFieldMatcher);
         return SearchSourceBuilder.fromXContent(context, searchRequestParsers.aggParsers, searchRequestParsers.suggesters, searchRequestParsers.searchExtParsers);
       }
     }

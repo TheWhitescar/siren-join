@@ -28,6 +28,7 @@ import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
 import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.search.SearchRequestParsers;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -51,9 +52,10 @@ public class TransportCoordinateSearchAction extends BaseTransportCoordinateSear
                                          TransportService transportService, FilterJoinCacheService cacheService,
                                          ActionFilters actionFilters, TransportSearchAction searchAction,
                                          SearchRequestParsers searchRequestParsers,
-                                         IndexNameExpressionResolver indexNameExpressionResolver, Client client) {
+                                         IndexNameExpressionResolver indexNameExpressionResolver, Client client,
+                                         NamedXContentRegistry xContentRegistry) {
     super(settings, CoordinateSearchAction.NAME, threadPool, transportService, actionFilters,
-            indexNameExpressionResolver, searchRequestParsers, client, SearchRequest::new);
+            indexNameExpressionResolver, searchRequestParsers, client, xContentRegistry, SearchRequest::new);
     this.searchAction = searchAction;
     this.cacheService = cacheService;
   }

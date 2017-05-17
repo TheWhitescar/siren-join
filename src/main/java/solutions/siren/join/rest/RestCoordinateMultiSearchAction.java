@@ -58,17 +58,9 @@ public class RestCoordinateMultiSearchAction extends BaseRestHandler {
     this.searchRequestParsers = searchRequestParsers;
   }
 
-  private boolean isTemplateRequest(String path) {
-    return (path != null && path.endsWith("/template"));
-  }
-
   @Override
   protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
-
-    String path = request.path();
-    boolean isTemplateRequest = isTemplateRequest(path);
     MultiSearchRequest multiSearchRequest = RestMultiSearchAction.parseRequest(request, allowExplicitIndex, searchRequestParsers, parseFieldMatcher);
-
     return channel -> client.execute(CoordinateMultiSearchAction.INSTANCE, multiSearchRequest, new RestToXContentListener<>(channel));
   }
 

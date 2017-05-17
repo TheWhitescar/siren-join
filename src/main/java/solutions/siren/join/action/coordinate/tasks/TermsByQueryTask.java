@@ -43,7 +43,7 @@ public class TermsByQueryTask implements NodeTask {
   @Override
   public void execute(final NodeTaskContext context, final NodeTaskReporter reporter) {
     logger.debug("Executing async terms by query action");
-    final TermsByQueryRequest termsByQueryReq = this.getTermsByQueryRequest(context.getNode(), context.getVisitor().getParentRequest());
+    final TermsByQueryRequest termsByQueryReq = this.getTermsByQueryRequest(context.getNode());
     context.getClient().execute(TermsByQueryAction.INSTANCE, termsByQueryReq, new ActionListener<TermsByQueryResponse>() {
 
       @Override
@@ -73,7 +73,7 @@ public class TermsByQueryTask implements NodeTask {
     });
   }
 
-  protected TermsByQueryRequest getTermsByQueryRequest(FilterJoinNode node, ActionRequest parentRequest) {
+  protected TermsByQueryRequest getTermsByQueryRequest(FilterJoinNode node) {
     String[] lookupIndices = node.getLookupIndices();
     String[] lookupTypes = node.getLookupTypes();
     String lookupPath = node.getLookupPath();
@@ -82,7 +82,7 @@ public class TermsByQueryTask implements NodeTask {
     Integer maxTermsPerShard = node.getMaxTermsPerShard();
     TermsByQueryRequest.TermsEncoding termsEncoding = node.getTermsEncoding();
 
-    TermsByQueryRequest request = new TermsByQueryRequest(parentRequest, lookupIndices)
+    TermsByQueryRequest request = new TermsByQueryRequest(lookupIndices)
             .field(lookupPath)
             .types(lookupTypes)
             .query(lookupQuery)

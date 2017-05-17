@@ -38,7 +38,7 @@ import java.util.Arrays;
 /**
  * A request to get the values from a specific field for documents matching a specific query.
  * <p/>
- * The request requires the filter source to be set using {@link #query(QueryBuilder)}.
+ * The request requires the filter source to be set using {@link #query(AbstractQueryBuilder)}.
  *
  * @see TermsByQueryResponse
  */
@@ -70,20 +70,11 @@ public class TermsByQueryRequest extends BroadcastRequest<TermsByQueryRequest> {
   public TermsByQueryRequest() {}
 
   /**
-   * Constructor used internally to execute a terms by query request that originates from a parent request.
-   * This is required for Shield compatibility. This will copy the context and headers (which contain the Shield tokens)
-   * of the original request to the new request.
-   */
-  public TermsByQueryRequest(ActionRequest originalRequest, String... indices) {
-    super(indices);
-    this.indices(indices);
-  }
-
-  /**
    * Constructs a new terms by query request against the provided indices. No indices provided means it will run against all indices.
    */
   public TermsByQueryRequest(String... indices) {
     super(indices);
+    this.indices(indices);
   }
 
   /**

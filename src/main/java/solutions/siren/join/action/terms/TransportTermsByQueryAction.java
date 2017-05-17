@@ -25,6 +25,7 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.ParseFieldMatcher;
 import org.elasticsearch.common.breaker.CircuitBreaker;
 import org.elasticsearch.common.util.PageCacheRecycler;
+import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryShardContext;
@@ -83,7 +84,6 @@ public class TransportTermsByQueryAction extends TransportBroadcastAction<TermsB
   private final CircuitBreakerService breakerService;
   private final Client client;
   private final SearchService searchService;
-  private final SearchRequestParsers searchRequestParsers;
 
   /**
    * Constructor
@@ -94,8 +94,7 @@ public class TransportTermsByQueryAction extends TransportBroadcastAction<TermsB
                                      CircuitBreakerService breakerService,
                                      ScriptService scriptService,
                                      BigArrays bigArrays, ActionFilters actionFilters,
-                                     IndexNameExpressionResolver indexNameExpressionResolver, Client client,
-                                     SearchRequestParsers searchRequestParsers) {
+                                     IndexNameExpressionResolver indexNameExpressionResolver, Client client) {
     super(settings, TermsByQueryAction.NAME, threadPool, clusterService, transportService, actionFilters,
             indexNameExpressionResolver, TermsByQueryRequest::new, TermsByQueryShardRequest::new,
             // Use the generic threadpool which is cached, as we can end up with deadlock with the SEARCH threadpool
@@ -106,7 +105,6 @@ public class TransportTermsByQueryAction extends TransportBroadcastAction<TermsB
     this.breakerService = breakerService;
     this.client = client;
     this.searchService = searchService;
-    this.searchRequestParsers = searchRequestParsers;
   }
 
   /**
@@ -260,9 +258,9 @@ public class TransportTermsByQueryAction extends TransportBroadcastAction<TermsB
       if (querySource != null && querySource.length() > 0) {
         XContentParser queryParser = null;
         try {
-          queryParser = XContentFactory.xContent(querySource).createParser(querySource);
+          queryParser = XContentFactory.xContent(querySource).createParser(indexService.xContentRegistry(), querySource);
           context.getQueryShardContext().setTypes(request.types());
-          ParsedQuery parsedQuery = orderByOperation.getParsedQuery(queryParser, searchRequestParsers, parseFieldMatcher, context.getQueryShardContext());
+          ParsedQuery parsedQuery = orderByOperation.getParsedQuery(queryParser, parseFieldMatcher, context.getQueryShardContext());
           if (parsedQuery != null) {
             context.parsedQuery(parsedQuery);
           }
@@ -331,8 +329,8 @@ public class TransportTermsByQueryAction extends TransportBroadcastAction<TermsB
     /**
      * Returns the {@link ParsedQuery} associated to this order by operation.
      */
-    protected ParsedQuery getParsedQuery(final XContentParser queryParser, final SearchRequestParsers searchRequestParsers, final ParseFieldMatcher parseFieldMatcher, final QueryShardContext queryShardContext) throws IOException {
-      QueryParseContext context = new QueryParseContext(searchRequestParsers.queryParsers, queryParser, parseFieldMatcher);
+    protected ParsedQuery getParsedQuery(final XContentParser queryParser, final ParseFieldMatcher parseFieldMatcher, final QueryShardContext queryShardContext) throws IOException {
+      QueryParseContext context = new QueryParseContext(queryParser, parseFieldMatcher);
       Optional<QueryBuilder> queryBuilder = context.parseInnerQueryBuilder();
       return queryBuilder.isPresent() ? new ParsedQuery(queryBuilder.get().toQuery(queryShardContext)) : null;
     }
