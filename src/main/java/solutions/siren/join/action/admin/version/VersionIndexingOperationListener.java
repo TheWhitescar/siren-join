@@ -53,15 +53,15 @@ public class VersionIndexingOperationListener implements IndexingOperationListen
 
   // TODO: Elasticsearch 5.3 will restore the shard information that is now missing from these callbacks.
   // Once it is out, we will be able to have a finer-grained version handling.
-  // https://github.com/elastic/elasticsearch/pull/22606
+  //
 
   @Override
-  public void postIndex(Engine.Index index, boolean created) {
+  public void postIndex(ShardId shardId, Engine.Index index, Engine.IndexResult result) {
     versionMapping.values().forEach(AtomicLong::incrementAndGet);
   }
 
   @Override
-  public void postDelete(Engine.Delete delete) {
+  public void postDelete(ShardId shardId, Engine.Delete delete, Engine.DeleteResult result) {
     versionMapping.values().forEach(AtomicLong::incrementAndGet);
   }
 

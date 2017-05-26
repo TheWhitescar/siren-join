@@ -26,7 +26,9 @@ import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestRequest;
 import org.elasticsearch.rest.action.RestToXContentListener;
 import solutions.siren.join.action.admin.cache.ClearFilterJoinCacheAction;
+import solutions.siren.join.action.admin.cache.ClearFilterJoinCacheNodeResponse;
 import solutions.siren.join.action.admin.cache.ClearFilterJoinCacheRequest;
+import solutions.siren.join.action.admin.cache.ClearFilterJoinCacheResponse;
 
 import java.io.IOException;
 
@@ -43,7 +45,7 @@ public class RestClearFilterJoinCacheAction extends BaseRestHandler {
   protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
     ClearFilterJoinCacheRequest clearFilterJoinCacheRequest = new ClearFilterJoinCacheRequest();
     return (consumer) -> client.execute(ClearFilterJoinCacheAction.INSTANCE, clearFilterJoinCacheRequest,
-            new RestToXContentListener<>(consumer));
+            new RestToXContentListener<ClearFilterJoinCacheResponse>(consumer));
   }
 
   @Override

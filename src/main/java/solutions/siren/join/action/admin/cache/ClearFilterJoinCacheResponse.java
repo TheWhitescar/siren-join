@@ -24,13 +24,14 @@ import org.elasticsearch.cluster.ClusterName;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.xcontent.ToXContent;
+import org.elasticsearch.common.xcontent.ToXContentObject;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ClearFilterJoinCacheResponse extends BaseNodesResponse<ClearFilterJoinCacheNodeResponse> implements ToXContent {
+public class ClearFilterJoinCacheResponse extends BaseNodesResponse<ClearFilterJoinCacheNodeResponse> implements ToXContentObject {
 
   ClearFilterJoinCacheResponse() {}
 

@@ -19,19 +19,14 @@
 package solutions.siren.join.rest;
 
 import org.elasticsearch.action.search.MultiSearchRequest;
-import org.elasticsearch.action.search.SearchRequestBuilder;
-import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.client.node.NodeClient;
-import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.rest.BaseRestHandler;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestRequest;
-import org.elasticsearch.rest.action.RestActions;
 import org.elasticsearch.rest.action.RestToXContentListener;
 import org.elasticsearch.rest.action.search.RestMultiSearchAction;
-import org.elasticsearch.search.SearchRequestParsers;
 import solutions.siren.join.action.coordinate.CoordinateMultiSearchAction;
 
 import java.io.IOException;
@@ -41,31 +36,31 @@ import static org.elasticsearch.rest.RestRequest.Method.POST;
 
 public class RestCoordinateMultiSearchAction extends BaseRestHandler {
 
-  private final boolean allowExplicitIndex;
-  private final SearchRequestParsers searchRequestParsers;
+    private final boolean allowExplicitIndex;
+//  private final SearchRequestParsers searchRequestParsers;
 
-  @Inject
-  public RestCoordinateMultiSearchAction(final Settings settings, final RestController controller, SearchRequestParsers searchRequestParsers) {
-    super(settings);
-    controller.registerHandler(GET, "/_coordinate_msearch", this);
-    controller.registerHandler(POST, "/_coordinate_msearch", this);
-    controller.registerHandler(GET, "/{index}/_coordinate_msearch", this);
-    controller.registerHandler(POST, "/{index}/_coordinate_msearch", this);
-    controller.registerHandler(GET, "/{index}/{type}/_coordinate_msearch", this);
-    controller.registerHandler(POST, "/{index}/{type}/_coordinate_msearch", this);
+    @Inject
+    public RestCoordinateMultiSearchAction(final Settings settings, final RestController controller) {
+        super(settings);
+        controller.registerHandler(GET, "/_coordinate_msearch", this);
+        controller.registerHandler(POST, "/_coordinate_msearch", this);
+        controller.registerHandler(GET, "/{index}/_coordinate_msearch", this);
+        controller.registerHandler(POST, "/{index}/_coordinate_msearch", this);
+        controller.registerHandler(GET, "/{index}/{type}/_coordinate_msearch", this);
+        controller.registerHandler(POST, "/{index}/{type}/_coordinate_msearch", this);
 
-    this.allowExplicitIndex = settings.getAsBoolean("rest.action.multi.allow_explicit_index", true);
-    this.searchRequestParsers = searchRequestParsers;
-  }
+        this.allowExplicitIndex = settings.getAsBoolean("rest.action.multi.allow_explicit_index", true);
+//        this.searchRequestParsers = searchRequestParsers;
+    }
 
-  @Override
-  protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
-    MultiSearchRequest multiSearchRequest = RestMultiSearchAction.parseRequest(request, allowExplicitIndex, searchRequestParsers, parseFieldMatcher);
-    return channel -> client.execute(CoordinateMultiSearchAction.INSTANCE, multiSearchRequest, new RestToXContentListener<>(channel));
-  }
+    @Override
+    protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
+        MultiSearchRequest multiSearchRequest = RestMultiSearchAction.parseRequest(request, allowExplicitIndex);
+        return channel -> client.execute(CoordinateMultiSearchAction.INSTANCE, multiSearchRequest, new RestToXContentListener<>(channel));
+    }
 
-  @Override
-  public boolean canTripCircuitBreaker() {
-    return false;
-  }
+    @Override
+    public boolean canTripCircuitBreaker() {
+        return false;
+    }
 }

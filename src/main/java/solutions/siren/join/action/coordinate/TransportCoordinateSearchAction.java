@@ -30,11 +30,13 @@ import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.common.xcontent.XContentType;
-import org.elasticsearch.search.SearchRequestParsers;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 import solutions.siren.join.action.admin.cache.FilterJoinCacheService;
-import solutions.siren.join.action.coordinate.execution.*;
+import solutions.siren.join.action.coordinate.execution.CoordinateSearchMetadata;
+import solutions.siren.join.action.coordinate.execution.FilterJoinCache;
+import solutions.siren.join.action.coordinate.execution.FilterJoinVisitor;
+import solutions.siren.join.action.coordinate.execution.SourceMapVisitor;
 
 import java.util.Map;
 
@@ -43,89 +45,89 @@ import java.util.Map;
  */
 public class TransportCoordinateSearchAction extends BaseTransportCoordinateSearchAction<SearchRequest, SearchResponse> {
 
-  private final TransportSearchAction searchAction;
+    private final TransportSearchAction searchAction;
 
-  private final FilterJoinCacheService cacheService;
+    private final FilterJoinCacheService cacheService;
 
-  @Inject
-  public TransportCoordinateSearchAction(Settings settings, ThreadPool threadPool,
-                                         TransportService transportService, FilterJoinCacheService cacheService,
-                                         ActionFilters actionFilters, TransportSearchAction searchAction,
-                                         SearchRequestParsers searchRequestParsers,
-                                         IndexNameExpressionResolver indexNameExpressionResolver, Client client,
-                                         NamedXContentRegistry xContentRegistry) {
-    super(settings, CoordinateSearchAction.NAME, threadPool, transportService, actionFilters,
-            indexNameExpressionResolver, searchRequestParsers, client, xContentRegistry, SearchRequest::new);
-    this.searchAction = searchAction;
-    this.cacheService = cacheService;
-  }
-
-  @Override
-  protected void doExecute(final SearchRequest request, final ActionListener<SearchResponse> listener) {
-    logger.debug("{}: Execute coordinated search action", Thread.currentThread().getName());
-
-    // A reference to the listener that will be used - can be overwritten to reference a CoordinateSearchListener
-    ActionListener<SearchResponse> actionListener = listener;
-
-    // Retrieve the singleton instance of the filterjoin cache
-    FilterJoinCache cache = cacheService.getCacheInstance();
-
-    // Parse query source
-    Tuple<XContentType, Map<String, Object>> parsedSource = this.parseSource(request.source().buildAsBytes());
-    if (parsedSource != null) { // can be null if this is a uri search (query parameter in extraSource)
-      Map<String, Object> map = parsedSource.v2();
-
-      // Query planning and execution of filter joins
-      SourceMapVisitor mapVisitor = new SourceMapVisitor(map);
-      mapVisitor.traverse();
-      FilterJoinVisitor joinVisitor = new FilterJoinVisitor(client, mapVisitor.getFilterJoinTree(), cache, request);
-      joinVisitor.traverse();
-
-      // Wraps the listener with our own to inject metadata information in the response
-      CoordinateSearchListener coordinateSearchListener = new CoordinateSearchListener(listener);
-      coordinateSearchListener.setMetadata(joinVisitor.getMetadata());
-      actionListener = coordinateSearchListener;
-
-      // Filter joins have been replaced by a binary terms filter
-      // Rebuild the query source, and delegate the execution of the search action
-      request.source(this.buildSource(parsedSource.v1().xContent(), map));
-    }
-
-    // Delegate the execution of the request to the original search action
-    this.searchAction.execute(request, actionListener);
-
-    logger.debug("{}: Coordinated search action completed", Thread.currentThread().getName());
-  }
-
-  /**
-   * Wrapper around a listener that is responsible for injecting the coordinate search metadata
-   * into the search response.
-   */
-  public static class CoordinateSearchListener implements ActionListener<SearchResponse> {
-
-    private final ActionListener<SearchResponse> actionListener;
-
-    private CoordinateSearchMetadata metadata;
-
-    public CoordinateSearchListener(final ActionListener<SearchResponse> listener) {
-      this.actionListener = listener;
-    }
-
-    public void setMetadata(CoordinateSearchMetadata metadata) {
-      this.metadata = metadata;
+    @Inject
+    public TransportCoordinateSearchAction(Settings settings, ThreadPool threadPool,
+                                           TransportService transportService, FilterJoinCacheService cacheService,
+                                           ActionFilters actionFilters, TransportSearchAction searchAction,
+                                           IndexNameExpressionResolver indexNameExpressionResolver, Client client,
+                                           NamedXContentRegistry xContentRegistry)
+    {
+        super(settings, CoordinateSearchAction.NAME, threadPool, transportService, actionFilters,
+                indexNameExpressionResolver, client, xContentRegistry, SearchRequest::new);
+        this.searchAction = searchAction;
+        this.cacheService = cacheService;
     }
 
     @Override
-    public final void onResponse(SearchResponse response) {
-      CoordinateSearchResponse r = new CoordinateSearchResponse(response, metadata);
-      this.actionListener.onResponse(r);
+    protected void doExecute(final SearchRequest request, final ActionListener<SearchResponse> listener) {
+        logger.debug("{}: Execute coordinated search action", Thread.currentThread().getName());
+
+        // A reference to the listener that will be used - can be overwritten to reference a CoordinateSearchListener
+        ActionListener<SearchResponse> actionListener = listener;
+
+        // Retrieve the singleton instance of the filterjoin cache
+        FilterJoinCache cache = cacheService.getCacheInstance();
+
+        // Parse query source
+        Tuple<XContentType, Map<String, Object>> parsedSource = this.parseSource(request.source().buildAsBytes());
+        if (parsedSource != null) { // can be null if this is a uri search (query parameter in extraSource)
+            Map<String, Object> map = parsedSource.v2();
+
+            // Query planning and execution of filter joins
+            SourceMapVisitor mapVisitor = new SourceMapVisitor(map);
+            mapVisitor.traverse();
+            FilterJoinVisitor joinVisitor = new FilterJoinVisitor(client, mapVisitor.getFilterJoinTree(), cache, request);
+            joinVisitor.traverse();
+
+            // Wraps the listener with our own to inject metadata information in the response
+            CoordinateSearchListener coordinateSearchListener = new CoordinateSearchListener(listener);
+            coordinateSearchListener.setMetadata(joinVisitor.getMetadata());
+            actionListener = coordinateSearchListener;
+
+            // Filter joins have been replaced by a binary terms filter
+            // Rebuild the query source, and delegate the execution of the search action
+            request.source(this.buildSource(parsedSource.v1().xContent(), map));
+        }
+
+        // Delegate the execution of the request to the original search action
+        this.searchAction.execute(request, actionListener);
+
+        logger.debug("{}: Coordinated search action completed", Thread.currentThread().getName());
     }
 
-    @Override
-    public final void onFailure(Exception e) {
-      this.actionListener.onFailure(e);
-    }
+    /**
+     * Wrapper around a listener that is responsible for injecting the coordinate search metadata
+     * into the search response.
+     */
+    public static class CoordinateSearchListener implements ActionListener<SearchResponse> {
 
-  }
+        private final ActionListener<SearchResponse> actionListener;
+
+        private CoordinateSearchMetadata metadata;
+
+        public CoordinateSearchListener(final ActionListener<SearchResponse> listener) {
+            this.actionListener = listener;
+        }
+
+        public void setMetadata(CoordinateSearchMetadata metadata) {
+            this.metadata = metadata;
+        }
+
+        @Override
+        public final void onResponse(SearchResponse response) {
+            CoordinateSearchResponse r = new CoordinateSearchResponse(response, metadata);
+            this.actionListener.onResponse(r);
+        }
+
+        @Override
+        public final void onFailure(Exception e) {
+            this.actionListener.onFailure(e);
+        }
+
+    }
 
 }

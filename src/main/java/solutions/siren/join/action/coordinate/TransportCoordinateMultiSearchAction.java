@@ -20,7 +20,12 @@ package solutions.siren.join.action.coordinate;
 
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.action.ActionListener;
-import org.elasticsearch.action.search.*;
+import org.elasticsearch.action.search.MultiSearchRequest;
+import org.elasticsearch.action.search.MultiSearchResponse;
+import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.search.TransportMultiSearchAction;
+import org.elasticsearch.action.search.TransportSearchAction;
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.cluster.ClusterState;
@@ -33,11 +38,13 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.concurrent.AtomicArray;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.common.xcontent.XContentType;
-import org.elasticsearch.search.SearchRequestParsers;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 import solutions.siren.join.action.admin.cache.FilterJoinCacheService;
-import solutions.siren.join.action.coordinate.execution.*;
+import solutions.siren.join.action.coordinate.execution.CoordinateSearchMetadata;
+import solutions.siren.join.action.coordinate.execution.FilterJoinCache;
+import solutions.siren.join.action.coordinate.execution.FilterJoinVisitor;
+import solutions.siren.join.action.coordinate.execution.SourceMapVisitor;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,94 +63,100 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class TransportCoordinateMultiSearchAction extends BaseTransportCoordinateSearchAction<MultiSearchRequest, MultiSearchResponse> {
 
-  private final ClusterService clusterService;
+    private final ClusterService clusterService;
 
-  private final TransportSearchAction searchAction;
+    private final TransportSearchAction searchAction;
 
-  private final FilterJoinCacheService cacheService;
+    private final FilterJoinCacheService cacheService;
 
-  @Inject
-  public TransportCoordinateMultiSearchAction(Settings settings, ThreadPool threadPool,
-                                              TransportService transportService, ClusterService clusterService,
-                                              FilterJoinCacheService cacheService,
-                                              TransportSearchAction search, ActionFilters actionFilters,
-                                              SearchRequestParsers searchRequestParsers,
-                                              IndexNameExpressionResolver indexNameExpressionResolver, Client client,
-                                              NamedXContentRegistry xContentRegistry) {
-    super(settings, CoordinateMultiSearchAction.NAME, threadPool, transportService, actionFilters,
-            indexNameExpressionResolver, searchRequestParsers, client,  xContentRegistry, MultiSearchRequest::new);
-    this.searchAction = search;
-    this.clusterService = clusterService;
-    this.cacheService = cacheService;
-  }
-
-  @Override
-  protected void doExecute(final MultiSearchRequest request, final ActionListener<MultiSearchResponse> listener) {
-    logger.debug("{}: Execute coordinated multi-search action", Thread.currentThread().getName());
-
-    List<CoordinateSearchMetadata> metadatas = new ArrayList<>(request.requests().size());
-    this.doExecuteFilterJoins(request, metadatas);
-    this.doExecuteRequest(request, listener, metadatas);
-
-    logger.debug("{}: Coordinated multi-search action completed", Thread.currentThread().getName());
-  }
-
-  private void doExecuteFilterJoins(final MultiSearchRequest request,
-                                    final List<CoordinateSearchMetadata> metadatas) {
-    FilterJoinCache cache = cacheService.getCacheInstance();
-
-    for (int i = 0; i < request.requests().size(); i++) {
-      // Parse query source
-      Tuple<XContentType, Map<String, Object>> parsedSource = this.parseSource(request.requests().get(i).source().buildAsBytes());
-      Map<String, Object> map = parsedSource.v2();
-
-      // Query planning and execution of filter joins
-      SourceMapVisitor mapVisitor = new SourceMapVisitor(map);
-      mapVisitor.traverse();
-      FilterJoinVisitor joinVisitor = new FilterJoinVisitor(client, mapVisitor.getFilterJoinTree(), cache, request);
-      joinVisitor.traverse();
-      metadatas.add(joinVisitor.getMetadata());
-
-      // Filter joins have been replaced by a binary terms filter
-      // Rebuild the query source, and delegate the execution of the search action
-      request.requests().get(i).source(this.buildSource(parsedSource.v1().xContent(), map));
+    @Inject
+    public TransportCoordinateMultiSearchAction(Settings settings, ThreadPool threadPool,
+                                                TransportService transportService, ClusterService clusterService,
+                                                FilterJoinCacheService cacheService,
+                                                TransportSearchAction search, ActionFilters actionFilters,
+//                                              SearchRequestParsers searchRequestParsers,
+                                                IndexNameExpressionResolver indexNameExpressionResolver, Client client,
+                                                NamedXContentRegistry xContentRegistry)
+    {
+        super(settings, CoordinateMultiSearchAction.NAME, threadPool, transportService, actionFilters,
+                indexNameExpressionResolver, client, xContentRegistry, MultiSearchRequest::new);
+        this.searchAction = search;
+        this.clusterService = clusterService;
+        this.cacheService = cacheService;
     }
-  }
 
-  private void doExecuteRequest(final MultiSearchRequest request, final ActionListener<MultiSearchResponse> listener,
-                                final List<CoordinateSearchMetadata> metadatas) {
-    ClusterState clusterState = clusterService.state();
-    clusterState.blocks().globalBlockedRaiseException(ClusterBlockLevel.READ);
+    @Override
+    protected void doExecute(final MultiSearchRequest request, final ActionListener<MultiSearchResponse> listener) {
+        logger.debug("{}: Execute coordinated multi-search action", Thread.currentThread().getName());
 
-    final AtomicArray<CoordinateMultiSearchResponse.Item> responses = new AtomicArray<>(request.requests().size());
-    final AtomicInteger counter = new AtomicInteger(responses.length());
-    for (int i = 0; i < responses.length(); i++) {
-      final int index = i;
-      SearchRequest searchRequest = request.requests().get(i);
-      searchAction.execute(searchRequest, new ActionListener<SearchResponse>() {
+        List<CoordinateSearchMetadata> metadatas = new ArrayList<>(request.requests().size());
+        this.doExecuteFilterJoins(request, metadatas);
+        this.doExecuteRequest(request, listener, metadatas);
 
-        @Override
-        public void onResponse(SearchResponse searchResponse) {
-          responses.set(index, new CoordinateMultiSearchResponse.Item(new CoordinateSearchResponse(searchResponse, metadatas.get(index)), null));
-          if (counter.decrementAndGet() == 0) {
-            finishHim();
-          }
-        }
-
-        @Override
-        public void onFailure(Exception e) {
-          responses.set(index, new CoordinateMultiSearchResponse.Item(null, ExceptionsHelper.detailedMessage(e)));
-          if (counter.decrementAndGet() == 0) {
-            finishHim();
-          }
-        }
-
-        private void finishHim() {
-          listener.onResponse(new CoordinateMultiSearchResponse(responses.toArray(new CoordinateMultiSearchResponse.Item[responses.length()])));
-        }
-
-      });
+        logger.debug("{}: Coordinated multi-search action completed", Thread.currentThread().getName());
     }
-  }
+
+    private void doExecuteFilterJoins(final MultiSearchRequest request,
+                                      final List<CoordinateSearchMetadata> metadatas)
+    {
+        FilterJoinCache cache = cacheService.getCacheInstance();
+
+        for (int i = 0; i < request.requests().size(); i++) {
+            // Parse query source
+            Tuple<XContentType, Map<String, Object>> parsedSource = this.parseSource(request.requests().get(i).source().buildAsBytes());
+            Map<String, Object> map = parsedSource.v2();
+
+            // Query planning and execution of filter joins
+            SourceMapVisitor mapVisitor = new SourceMapVisitor(map);
+            mapVisitor.traverse();
+            FilterJoinVisitor joinVisitor = new FilterJoinVisitor(client, mapVisitor.getFilterJoinTree(), cache, request);
+            joinVisitor.traverse();
+            metadatas.add(joinVisitor.getMetadata());
+
+            // Filter joins have been replaced by a binary terms filter
+            // Rebuild the query source, and delegate the execution of the search action
+            request.requests().get(i).source(this.buildSource(parsedSource.v1().xContent(), map));
+        }
+    }
+
+    private void doExecuteRequest(final MultiSearchRequest request, final ActionListener<MultiSearchResponse> listener,
+                                  final List<CoordinateSearchMetadata> metadatas)
+    {
+        ClusterState clusterState = clusterService.state();
+        clusterState.blocks().globalBlockedRaiseException(ClusterBlockLevel.READ);
+
+        final AtomicArray<CoordinateMultiSearchResponse.Item> responses = new AtomicArray<>(request.requests().size());
+        final AtomicInteger counter = new AtomicInteger(responses.length());
+        for (int i = 0; i < responses.length(); i++) {
+            final int index = i;
+            SearchRequest searchRequest = request.requests().get(i);
+            searchAction.execute(searchRequest, new ActionListener<SearchResponse>() {
+
+                @Override
+                public void onResponse(SearchResponse searchResponse) {
+                    responses.set(index,
+                            new CoordinateMultiSearchResponse.Item(new CoordinateSearchResponse(searchResponse, metadatas.get(index)),
+                                    null));
+                    if (counter.decrementAndGet() == 0) {
+                        finishHim();
+                    }
+                }
+
+                @Override
+                public void onFailure(Exception e) {
+                    responses.set(index, new CoordinateMultiSearchResponse.Item(null, ExceptionsHelper.detailedMessage(e)));
+                    if (counter.decrementAndGet() == 0) {
+                        finishHim();
+                    }
+                }
+
+                private void finishHim() {
+                    listener.onResponse(new CoordinateMultiSearchResponse(
+                            responses.toArray(new CoordinateMultiSearchResponse.Item[responses.length()])));
+                }
+
+            });
+        }
+    }
 
 }
